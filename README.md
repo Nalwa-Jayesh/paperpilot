@@ -29,8 +29,8 @@
 
 ### 1. Clone the Repository
 ```bash
-git clone <your-repo-url>
-cd <your-repo-directory>
+git clone https://github.com/Nalwa-Jayesh/paperpilot
+cd paperpilot
 ```
 
 ### 2. Create and Activate a Virtual Environment
