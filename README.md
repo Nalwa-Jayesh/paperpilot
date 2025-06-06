@@ -5,6 +5,50 @@
 
 ---
 
+## Architecture
+PaperPilot follows a modular Retrieval-Augmented Generation (RAG) architecture, designed for clarity, scalability, and flexibility. The main components and data flow are illustrated below:
+
+```
++-----------+     +-------------+     +---------+     +---------------------+     +---------+
+| User/PDFs | --> | PDF Parser  | --> | Utils   | --> | Vector Index Builder| --> | FAISS   |
++-----------+     | (pdf_parser)|     | (utils) |     | (build_index)       |     | (Index) |
+                  +-------------+     +---------+     +---------------------+     +---------+
+                        (Extract, Chunk, Clean)            (Embed, Index)               ^        
+                                                              ^                         |        
+                                                              | (Query Embed)           | (Search) 
+                                                              |                         |        
++-----------+     +---------------+     +---------------+     +-----------+     +-----------+
+| User Query| --> | Query Engine  | --> | Language      | <-> | Ollama/HF |     | Retrieved |
++-----------+     | (query_engine)|     | Model         |     | (APIs)    |     | Chunks    |
+                  +---------------+     | (models)      |     +-----------+     +-----------+
+                        (Orchestrate)       (Inference)                                ^        
+                              ^                                                        | (Context)
+                              |                                                        |        
+                              +--------------------------------------------------------+
+
++-----------+     +---------------+     +--------------+
+| User Query| --> | Query Engine  | --> | Arxiv API    |
++-----------+     | (query_engine)|   +--------------+
+                  |    (Lookup)   |         |             
+                  +---------------+         | (Results)   
+                                            v             
+                                     +-----------+
+                                     | Streamlit |
+                                     | (main.py) |
+                                     +-----------+
+```
+
+**Component Breakdown:**
+
+1.  **Streamlit UI (`main.py`)**: The user interface for uploading documents, initiating indexing, and asking questions. Also displays Q&A results and Arxiv search outcomes.
+2.  **PDF Parser (`pdf_parser.py`)**: Extracts text, structure, tables, figures, and metadata from PDF files.
+3.  **Utilities (`utils.py`)**: Provides helper functions for text cleaning, intelligent chunking, hashing, and logging. Used by the PDF Parser and Vector Index Builder.
+4.  **Vector Index Builder (`build_index.py`)**: Processes parsed documents, chunks text, embeds chunks using a Sentence Transformer (MiniLM), and builds/manages a FAISS vector index for efficient similarity search. Stores chunk metadata and text for retrieval.
+5.  **Language Model Loader (`models.py`)**: Handles the loading and management of the LLM. Implements a local-first strategy, attempting to use a local Ollama instance (Llama 2 7B by default). If Ollama is not available, it falls back to using the Hugging Face pipeline (Zephyr-7b-beta by default) for cloud inference.
+6.  **Query Engine (`query_engine.py`)**: Acts as the RAG orchestrator. Takes user queries, embeds them using the Embedding Model, searches the FAISS index for relevant document chunks, retrieves the chunk text, constructs a prompt with the retrieved context, and sends the prompt to the loaded Language Model to generate an answer. Also handles the Arxiv API lookup.
+
+---
+
 ## Features
 - 📄 **Multi-PDF Upload & Parsing**: Extracts structured text, tables, figures, and metadata from PDFs.
 - 🔍 **Semantic Search**: Embeds and indexes document chunks using MiniLM and FAISS for fast retrieval.
