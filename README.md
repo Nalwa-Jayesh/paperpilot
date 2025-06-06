@@ -103,6 +103,19 @@ HUGGINGFACEHUB_API_TOKEN=your_huggingface_token_here  # Only needed for cloud/ga
   ollama serve  # If not started automatically
   ```
 
+### 6. Windows Users: Hugging Face Cache Configuration
+If you're using Windows and see a warning about symlinks in the Hugging Face cache, you have two options:
+1. **Enable Developer Mode** (Recommended):
+   - Open Windows Settings
+   - Go to Privacy & Security > For Developers
+   - Turn on Developer Mode
+2. **Run Python as Administrator**:
+   - Right-click on your terminal/PowerShell
+   - Select "Run as Administrator"
+   - Then run your Python application
+
+This is needed because Hugging Face uses symlinks for efficient caching, which requires either Developer Mode or admin privileges on Windows.
+
 ---
 
 ## Usage
@@ -123,7 +136,7 @@ streamlit run main.py
 
 ## Model Switching Logic
 - **Local First**: If Ollama is running and the `llama2:7b` model is available, all Q&A is handled locally for speed and privacy.
-- **Cloud Fallback**: If Ollama is not available, the app automatically uses Hugging Face's `HuggingFaceH4/zephyr-7b-beta` via the pipeline API.
+- **Cloud Fallback**: If Ollama is not available, the app automatically uses Hugging Face's `microsotf/phi-2` via the pipeline API.
 - **No manual intervention needed!**
 
 ---
@@ -144,7 +157,7 @@ streamlit run main.py
 ---
 
 ## License & Acknowledgments
-- **License**: [MIT](LICENSE) (or your choice)
+- **License**: [MIT](LICENSE)
 - **Acknowledgments**:
   - [Hugging Face Transformers & Pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines)
   - [Ollama](https://ollama.com/)

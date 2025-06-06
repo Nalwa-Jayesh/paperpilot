@@ -82,8 +82,25 @@ if st.session_state.get('index_built') and st.session_state.get('engine'):
     st.subheader("Ask a Question")
     user_query = st.text_input("Enter your question about the uploaded documents:")
     if user_query:
-        with st.spinner("Retrieving answer..."):
+        with st.spinner("Processing your question..."):
+            # Show progress steps
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Step 1: Retrieving context
+            status_text.text("Retrieving relevant context...")
+            progress_bar.progress(25)
+            
+            # Step 2: Generating answer
+            status_text.text("Generating answer...")
+            progress_bar.progress(75)
+            
             result = st.session_state['engine'].query(user_query, top_k=5)
+            
+            # Step 3: Complete
+            progress_bar.progress(100)
+            status_text.text("Done!")
+            
         st.markdown(f"### 🧠 Answer\n{result['answer']}")
         with st.expander("Show supporting context and sources"):
             st.markdown("#### Context")

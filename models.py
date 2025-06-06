@@ -69,7 +69,13 @@ class LanguageModel:
                 "model": self.ollama_model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": temperature}
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": 128,  # Limit response length
+                    "top_k": 10,  # Reduce sampling space
+                    "top_p": 0.9,  # Nucleus sampling
+                    "repeat_penalty": 1.1  # Prevent repetition
+                }
             }
             try:
                 resp = requests.post(self.ollama_url, json=payload, timeout=120)
@@ -84,10 +90,13 @@ class LanguageModel:
         else:
             result = self.generator(
                 prompt,
-                max_new_tokens=256,  # Controls how many new tokens to generate
+                max_new_tokens=128,  # Reduced from 256 for faster generation
                 temperature=temperature,
                 do_sample=True,
-                truncation=True,  # Explicitly enable truncation
+                truncation=True,
+                top_k=10,  # Reduce sampling space
+                top_p=0.9,  # Nucleus sampling
+                repetition_penalty=1.1,  # Prevent repetition
                 pad_token_id=self.generator.tokenizer.eos_token_id
             )
             return result[0]['generated_text'][len(prompt):].strip()
