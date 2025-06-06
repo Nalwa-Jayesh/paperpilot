@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import hashlib
+import requests
 
 # Configure page
 st.set_page_config(
@@ -237,70 +238,151 @@ def main():
     # Main content area - Only Document Q&A section
     st.header("Ask Questions About Your Documents")
     
-    # File upload in the main content area
-    uploaded_files = st.file_uploader(
-        "Upload PDFs",
-        type=['pdf'],
-        accept_multiple_files=True,
-        help="Upload one or more PDF documents to analyze"
-    )
-    
-    if uploaded_files:
-        process_uploaded_files(uploaded_files)
-    
-    # Chat interface
-    user_query = st.chat_input("Enter your question about the uploaded documents...")
-    
-    # Display chat history
-    for message in st.session_state.chat_history:
-        display_chat_message(message['content'], message['is_user'])
-    
-    if user_query:
-        # Add user message to chat history
-        st.session_state.chat_history.append({'content': user_query, 'is_user': True})
-        display_chat_message(user_query, True)
+    # Main content area - Tabs for Document Q&A and Arxiv Search
+    tab1, tab2 = st.tabs(["Document Q&A", "Arxiv Search"])
+
+    with tab1:
+        st.header("Ask Questions About Your Documents")
         
-        with st.spinner("Thinking..."):
-            result = st.session_state.query_engine.query(user_query)
+        # File upload in the main content area
+        uploaded_files = st.file_uploader(
+            "Upload PDFs",
+            type=['pdf'],
+            accept_multiple_files=True,
+            help="Upload one or more PDF documents to analyze"
+        )
+        
+        if uploaded_files:
+            process_uploaded_files(uploaded_files)
+        
+        # Chat interface
+        user_query = st.chat_input("Enter your question about the uploaded documents...", key="doc_qa_input")
+        
+        # Display chat history
+        for message in st.session_state.chat_history:
+            display_chat_message(message['content'], message['is_user'])
+        
+        if user_query:
+            # Add user message to chat history
+            st.session_state.chat_history.append({'content': user_query, 'is_user': True})
+            display_chat_message(user_query, True)
             
-            # Add assistant response to chat history
-            st.session_state.chat_history.append({'content': result['answer'], 'is_user': False})
-            display_chat_message(result['answer'])
-            
-            # Display sources if available
-            if result['sources']:
-                with st.expander("📚 View Sources", expanded=False):
-                    # First show the context
-                    st.markdown("### Context")
-                    st.markdown(f"<div class='source-box'>{result['context']}</div>", unsafe_allow_html=True)
+            with st.spinner("Thinking..."):
+                result = st.session_state.query_engine.query(user_query)
+                
+                # Add assistant response to chat history
+                st.session_state.chat_history.append({'content': result['answer'], 'is_user': False})
+                display_chat_message(result['answer'])
+                
+                # Display sources if available
+                if result['sources']:
+                    with st.expander("📚 View Sources", expanded=False):
+                        # First show the context
+                        st.markdown("### Context")
+                        st.markdown(f"<div class='source-box'>{result['context']}</div>", unsafe_allow_html=True)
+                        
+                        # Then show individual sources
+                        st.markdown("### Sources")
+                        for i, source_item in enumerate(result['sources'], 1):
+                            # Get metadata from the source item
+                            source_doc = source_item.get('source', 'Unknown Document')
+                            source_page = source_item.get('page', 'Unknown Page')
+                            chunk_text = source_item.get('chunk_text', 'Content not available')
+                            similarity_score = source_item.get('score', 0)
+                            
+                            # Format similarity score as percentage
+                            score_percentage = f"{similarity_score * 100:.1f}%"
+                            
+                            st.markdown(f"""
+                                <div class="source-box">
+                                    <div class="source-header">
+                                        <h3 style="margin: 0;">Source {i}</h3>
+                                        <span class="source-score">Relevance: {score_percentage}</span>
+                                    </div>
+                                    <div class="source-metadata">
+                                        <span class="source-metadata-item">📄 {source_doc}</span>
+                                        <span class="source-metadata-item">📑 Page {source_page}</span>
+                                    </div>
+                                    <div class="source-content">
+                                        {chunk_text}
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+    with tab2:
+        st.header("Search Arxiv")
+        arxiv_query = st.text_input("Enter search query for Arxiv:", key="arxiv_input")
+        # max_results = st.number_input("Maximum results:", min_value=1, value=3, key="arxiv_max_results") # Optional: Add if needed
+        
+        if st.button("Search Arxiv"):
+            if arxiv_query:
+                with st.spinner("Searching Arxiv..."):
+                    arxiv_results = st.session_state.query_engine.arxiv_lookup(arxiv_query) # Add max_results if number_input is used
+                    st.session_state.arxiv_results = arxiv_results # Store results in session state
                     
-                    # Then show individual sources
-                    st.markdown("### Sources")
-                    for i, source_item in enumerate(result['sources'], 1):
-                        # Get metadata from the source item
-                        source_doc = source_item.get('source', 'Unknown Document')
-                        source_page = source_item.get('page', 'Unknown Page')
-                        chunk_text = source_item.get('chunk_text', 'Content not available')
-                        similarity_score = source_item.get('score', 0)
+            else:
+                st.warning("Please enter a search query.")
+                
+        # Display Arxiv results from session state
+        if 'arxiv_results' in st.session_state and st.session_state.arxiv_results:
+            if "error" in st.session_state.arxiv_results:
+                st.error(f"Arxiv search failed: {st.session_state.arxiv_results['error']}")
+            elif "results" in st.session_state.arxiv_results:
+                st.subheader("Search Results")
+                if st.session_state.arxiv_results['results']:
+                    for paper in st.session_state.arxiv_results['results']:
+                        st.markdown(f"**[{paper['title']}]({paper['link']})**")
+                        st.markdown(f"*Authors:* {', '.join(paper['authors'])}")
+                        st.markdown(f"*Summary:* {paper['summary']}")
                         
-                        # Format similarity score as percentage
-                        score_percentage = f"{similarity_score * 100:.1f}%"
-                        
-                        st.markdown(f"""
-                            <div class="source-box">
-                                <div class="source-header">
-                                    <h3 style="margin: 0;">Source {i}</h3>
-                                    <span class="source-score">Relevance: {score_percentage}</span>
-                                </div>
-                                <div class="source-metadata">
-                                    <span class="source-metadata-item">📄 {source_doc}</span>
-                                    <span class="source-metadata-item">📑 Page {source_page}</span>
-                                </div>
-                                <div class="source-content">
-                                    {chunk_text}
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        # Add to index button
+                        if st.button(f"Add \"{paper['title']}\" to Index", key=f"add_arxiv_{paper['link']}"):
+                            # Logic to add paper to index will be implemented here
+                            # st.info(f"Adding \"{paper['title']}\" to index...") # Removed as spinner will show
+                            # Need to fetch the PDF and add to index
+                            # Placeholder for now
+                            st.session_state.arxiv_paper_to_index = paper # Store the paper info in session state
+                            st.rerun()
+
+                        st.markdown("---")
+                else:
+                    st.info("No results found for your query.")
+
+# Logic to process selected Arxiv paper for indexing
+if 'arxiv_paper_to_index' in st.session_state and st.session_state.arxiv_paper_to_index:
+    paper_info = st.session_state.arxiv_paper_to_index
+    st.info(f"Adding \"{paper_info['title']}\" to index...")
+    
+    # Get the PDF link (replace 'abs' with 'pdf')
+    pdf_link = paper_info['link'].replace("/abs", "/pdf")
+    
+    try:
+        response = requests.get(pdf_link, stream=True)
+        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+        
+        # Save to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(response.content)
+            tmp_file_path = tmp_file.name
+        
+        # Process the temporary file
+        process_uploaded_files([tmp_file_path]) # process_uploaded_files expects a list of file paths
+        
+        # Clean up the temporary file
+        os.unlink(tmp_file_path)
+        
+        # Clear the state variable
+        del st.session_state.arxiv_paper_to_index
+        st.rerun()
+        
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to download PDF from {pdf_link}: {e}")
+        del st.session_state.arxiv_paper_to_index # Clear state even on error
+        st.rerun()
+    except Exception as e:
+        st.error(f"An error occurred while processing the PDF: {e}")
+        del st.session_state.arxiv_paper_to_index # Clear state even on error
+        st.rerun()
 
 if __name__ == "__main__":
     main() 
