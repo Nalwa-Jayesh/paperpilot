@@ -1,7 +1,7 @@
 # PaperPilot: Enterprise Document Q&A AI Agent
 
 ## Overview
-**PaperPilot** is an enterprise-ready Document Q&A AI Agent that enables users to upload, index, and query multiple PDF documents using state-of-the-art Large Language Models (LLMs). The system supports both local (Ollama) and cloud (Hugging Face) LLM inference, semantic search with FAISS, and a modern Streamlit UI. Bonus: Includes Arxiv API lookup for scientific paper discovery.
+**PaperPilot** is an enterprise-ready Document Q&A AI Agent that enables users to upload, index, and query multiple PDF documents using state-of-the-art Large Language Models (LLMs). The system supports both local (Ollama) and cloud (Hugging Face) LLM inference, semantic search with FAISS, and a modern Streamlit UI. The platform also includes an integrated Arxiv search feature for discovering and analyzing scientific papers.
 
 ---
 
@@ -44,7 +44,7 @@ PaperPilot follows a modular Retrieval-Augmented Generation (RAG) architecture, 
 2.  **PDF Parser (`pdf_parser.py`)**: Extracts text, structure, tables, figures, and metadata from PDF files.
 3.  **Utilities (`utils.py`)**: Provides helper functions for text cleaning, intelligent chunking, hashing, and logging. Used by the PDF Parser and Vector Index Builder.
 4.  **Vector Index Builder (`build_index.py`)**: Processes parsed documents, chunks text, embeds chunks using a Sentence Transformer (MiniLM), and builds/manages a FAISS vector index for efficient similarity search. Stores chunk metadata and text for retrieval.
-5.  **Language Model Loader (`models.py`)**: Handles the loading and management of the LLM. Implements a local-first strategy, attempting to use a local Ollama instance (Llama 2 7B by default). If Ollama is not available, it falls back to using the Hugging Face pipeline (Zephyr-7b-beta by default) for cloud inference.
+5.  **Language Model Loader (`models.py`)**: Handles the loading and management of the LLM. Implements a local-first strategy, attempting to use a local Ollama instance (Gemma 2B by default). If Ollama is not available, it falls back to using the Hugging Face pipeline (google/gemma-2-2b by default) for cloud inference.
 6.  **Query Engine (`query_engine.py`)**: Acts as the RAG orchestrator. Takes user queries, embeds them using the Embedding Model, searches the FAISS index for relevant document chunks, retrieves the chunk text, constructs a prompt with the retrieved context, and sends the prompt to the loaded Language Model to generate an answer. Also handles the Arxiv API lookup.
 
 ---
@@ -52,8 +52,12 @@ PaperPilot follows a modular Retrieval-Augmented Generation (RAG) architecture, 
 ## Features
 - 📄 **Multi-PDF Upload & Parsing**: Extracts structured text, tables, figures, and metadata from PDFs.
 - 🔍 **Semantic Search**: Embeds and indexes document chunks using MiniLM and FAISS for fast retrieval.
-- 🧠 **LLM Q&A**: Answers user questions using Llama 2 7B (local via Ollama) or Hugging Face (cloud fallback).
-- 🌐 **Arxiv API Integration**: Search for scientific papers by description directly from the UI.
+- 🧠 **LLM Q&A**: Answers user questions using Gemma 2B (local via Ollama) or Hugging Face (cloud fallback).
+- 📚 **Arxiv Integration**: 
+  - Search for scientific papers using natural language descriptions
+  - View paper details including title, authors, abstract, and publication date
+  - Direct links to paper PDFs and Arxiv pages
+  - Filter results by relevance and date
 - ⚡ **Automatic Model Switching**: Prefers local LLM (Ollama) for speed and privacy; falls back to Hugging Face if not available.
 - 🖥️ **Streamlit UI**: Intuitive web interface for upload, search, and Q&A.
 - 🛡️ **Enterprise-Ready**: Modular, secure, and easy to extend.
@@ -97,9 +101,9 @@ HUGGINGFACEHUB_API_TOKEN=your_huggingface_token_here  # Only needed for cloud/ga
 
 ### 5. (Optional) Install and Start Ollama for Local LLM
 - [Ollama install instructions](https://ollama.com/download)
-- Pull the Llama 2 7B model:
+- Pull the Gemma 2B model:
   ```bash
-  ollama pull llama2:7b
+  ollama pull gemma2:2b
   ollama serve  # If not started automatically
   ```
 
@@ -130,13 +134,18 @@ streamlit run main.py
 - **Build Index**: Click "Build Index" to parse and embed documents.
 - **Ask Questions**: Enter natural language questions about your documents.
 - **View Answers**: See answers, supporting context, and source metadata.
-- **Arxiv Search**: Use the sidebar to search for scientific papers by description.
+- **Arxiv Search**: 
+  - Switch to the "Arxiv Search" tab
+  - Enter a description of the paper you're looking for
+  - View detailed results including abstracts and metadata
+  - Access direct links to papers and their Arxiv pages
+  - Filter and sort results as needed
 
 ---
 
 ## Model Switching Logic
-- **Local First**: If Ollama is running and the `llama2:7b` model is available, all Q&A is handled locally for speed and privacy.
-- **Cloud Fallback**: If Ollama is not available, the app automatically uses Hugging Face's `microsotf/phi-2` via the pipeline API.
+- **Local First**: If Ollama is running and the `gemma2:2b` model is available, all Q&A is handled locally for speed and privacy.
+- **Cloud Fallback**: If Ollama is not available, the app automatically uses Hugging Face's `google/gemma-2-2b` via the pipeline API.
 - **No manual intervention needed!**
 
 ---
