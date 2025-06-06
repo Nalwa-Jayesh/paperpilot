@@ -30,11 +30,11 @@ class EmbeddingModel:
 class LanguageModel:
     def __init__(self, 
                  ollama_model: str = "llama2:7b",
-                 hf_model: str = "HuggingFaceH4/zephyr-7b-beta", 
+                 hf_model: str = "microsoft/phi-2", 
                  api_token: Optional[str] = None, 
                  task: str = "text-generation"):
         """
-        Tries to use local Ollama (llama2:7b) for inference. If not available, falls back to Hugging Face pipeline (HuggingFaceH4/zephyr-7b-beta).
+        Tries to use local Ollama (llama2:7b) for inference. If not available, falls back to Hugging Face pipeline (microsoft/phi-2).
         """
         self.use_ollama = False
         self.ollama_url = "http://localhost:11434/api/generate"
@@ -43,7 +43,7 @@ class LanguageModel:
 
         # Try Ollama first
         try:
-            resp = requests.post(self.ollama_url, json={"model": ollama_model, "prompt": "Hello", "stream": False}, timeout=3)
+            resp = requests.post(self.ollama_url, json={"model": ollama_model, "prompt": "Hello", "stream": False}, timeout=10)
             if resp.status_code == 200:
                 self.use_ollama = True
                 logger.info(f"Using local Ollama model: {ollama_model}")
@@ -72,7 +72,7 @@ class LanguageModel:
                 "options": {"temperature": temperature}
             }
             try:
-                resp = requests.post(self.ollama_url, json=payload)
+                resp = requests.post(self.ollama_url, json=payload, timeout=120)
                 if resp.status_code == 200:
                     return resp.json().get("response", "").strip()
                 else:
@@ -84,9 +84,10 @@ class LanguageModel:
         else:
             result = self.generator(
                 prompt,
-                max_length=max_length,
+                max_new_tokens=256,  # Controls how many new tokens to generate
                 temperature=temperature,
                 do_sample=True,
+                truncation=True,  # Explicitly enable truncation
                 pad_token_id=self.generator.tokenizer.eos_token_id
             )
             return result[0]['generated_text'][len(prompt):].strip()

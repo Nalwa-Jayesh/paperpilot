@@ -16,7 +16,7 @@ class QueryEngine:
                  index_dir: str = "./index",
                  embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
                  ollama_model: str = "llama2:7b",
-                 hf_model: str = "HuggingFaceH4/zephyr-7b-beta",
+                 hf_model: str = "microsoft/phi-2",
                  llm_api_token: Optional[str] = None):
         """
         Query engine for RAG pipeline. Loads FAISS index, embeds queries, retrieves context, and calls LLM.
