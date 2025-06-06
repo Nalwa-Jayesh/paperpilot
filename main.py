@@ -1,116 +1,306 @@
 import streamlit as st
-import os
-import tempfile
-from pathlib import Path
-from typing import List
-from build_index import VectorIndexBuilder, build_index_from_directory
-from query_engine import QueryEngine
-from pdf_parser import parse_pdf
-import shutil
 import logging
+from query_engine import QueryEngine
+from models import LanguageModel
+import os
+from pathlib import Path
+import tempfile
+import hashlib
 
-st.set_page_config(page_title="Document Q&A AI Agent", layout="wide")
+# Configure page
+st.set_page_config(
+    page_title="PaperPilot",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS
+st.markdown("""
+    <style>
+    /* General adjustments */
+    .main {
+        padding: 2rem;
+    }
+    
+    /* Sidebar styling */
+    .sidebar .sidebar-content {
+        background-color: #1e212b; /* Darker background for sidebar */
+        color: #ffffff; /* White text */
+        padding-top: 2rem;
+    }
+    .sidebar .stRadio > label > div:first-child {
+        padding-right: 0.5rem;
+    }
+    .sidebar .stRadio div[data-baseweb="radio"] > label {
+        margin-bottom: 0.5rem; /* Add space between radio options */
+    }
+    .sidebar .stMarkdown h3 {
+        color: #ffffff; /* White color for sidebar headers */
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem; /* Reduce gap between tabs */
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: auto; /* Auto height */
+        padding: 0.75rem 1.5rem; /* Adjusted padding */
+        background-color: transparent; /* Transparent background for unselected tabs */
+        border-bottom: 2px solid transparent; /* Transparent bottom border */
+        margin-bottom: -2px; /* Counteract border to keep layout consistent */
+        color: #adb5bd; /* Lighter color for unselected text */
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: transparent; /* Transparent background for selected tab */
+        color: #4CAF50; /* Green color for selected text */
+        border-bottom: 2px solid #4CAF50; /* Green bottom border for selected tab */
+    }
+    
+    /* Chat message styling */
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .chat-message {
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        width: 90%;
+    }
+    .chat-message.user {
+        background-color: #262730;
+        align-self: flex-end;
+    }
+    .chat-message.assistant {
+        background-color: #475063;
+        align-self: flex-start;
+    }
+    .chat-message .avatar {
+        width: 20%;
+    }
+    .chat-message .avatar img {
+        max-width: 78px;
+        max-height: 78px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .chat-message .message {
+        width: 80%;
+        padding: 0 1.5rem;
+        color: #fff;
+    }
+    
+    /* Source Display Styling */
+    .source-box {
+        background-color: #2e3440;
+        border: 1px solid #4c566a;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        font-size: 0.9em;
+        line-height: 1.6;
+        color: #d8dee9;
+    }
+    .source-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #4c566a;
+        padding-bottom: 8px;
+    }
+    .source-score {
+        font-size: 0.8em;
+        color: #a3be8c;
+        font-weight: bold;
+    }
+    .source-metadata {
+        margin-top: 10px;
+        margin-bottom: 10px;
+        color: #b48ead;
+        font-size: 0.85em;
+    }
+     .source-metadata-item {
+        margin-right: 15px;
+     }
+    .source-content {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #4c566a;
+        white-space: pre-wrap; /* Preserve line breaks */
+    }
+    
+    /* Streamlit overrides for chat interface */
+    .stTextInput > div > div > input {
+        padding: 12px 20px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .stButton>button {
+        padding: 12px 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 logger = logging.getLogger(__name__)
 
-# --- Sidebar: Arxiv Lookup (Bonus) ---
-st.sidebar.title("Arxiv Lookup (Bonus)")
-arxiv_query = st.sidebar.text_input("Describe the paper you want to find on Arxiv")
-if 'arxiv_results' not in st.session_state:
-    st.session_state['arxiv_results'] = None
-if 'engine' not in st.session_state:
-    st.session_state['engine'] = None
-if arxiv_query:
-    if st.sidebar.button("Search Arxiv"):
-        with st.spinner("Searching arXiv..."):
-            if st.session_state['engine']:
-                arxiv_result = st.session_state['engine'].arxiv_lookup(arxiv_query)
-                st.session_state['arxiv_results'] = arxiv_result
-            else:
-                st.session_state['arxiv_results'] = {"error": "Engine not initialized."}
-    if st.session_state['arxiv_results']:
-        arxiv_result = st.session_state['arxiv_results']
-        if 'error' in arxiv_result and arxiv_result['error']:
-            st.sidebar.error(f"Error: {arxiv_result['error']}")
-        elif arxiv_result.get('results'):
-            st.sidebar.markdown("### Top arXiv Results:")
-            for paper in arxiv_result['results']:
-                st.sidebar.markdown(f"**[{paper['title']}]({paper['link']})**  ")
-                st.sidebar.markdown(f"*Authors:* {', '.join(paper['authors'])}")
-                st.sidebar.markdown(f"*Abstract:* {paper['summary'][:400]}{'...' if len(paper['summary']) > 400 else ''}")
-                st.sidebar.markdown("---")
+@st.cache_data
+def get_file_hash(file_content: bytes) -> str:
+    """Generate a hash for the file content."""
+    return hashlib.md5(file_content).hexdigest()
 
-# --- Main App ---
-st.title("📄 Document Q&A AI Agent")
-st.write("Upload PDFs, build an index, and ask questions about your documents.")
+@st.cache_resource
+def get_query_engine():
+    """Initialize and cache the query engine."""
+    return QueryEngine()
 
-# --- File Upload ---
-uploaded_files = st.file_uploader("Upload one or more PDF files", type=["pdf"], accept_multiple_files=True)
+def process_uploaded_files(uploaded_files):
+    """Process uploaded PDF files."""
+    if not uploaded_files:
+        return
 
-# --- Session State for Index and Engine ---
-if 'index_built' not in st.session_state:
-    st.session_state['index_built'] = False
-if 'index_dir' not in st.session_state:
-    st.session_state['index_dir'] = tempfile.mkdtemp()
-if 'engine' not in st.session_state:
-    st.session_state['engine'] = None
-
-# --- Build Index Button ---
-if uploaded_files:
-    st.write(f"{len(uploaded_files)} PDF(s) uploaded.")
-    if st.button("Build Index"):
-        # Save uploaded files to temp dir
-        temp_dir = Path(st.session_state['index_dir'])
+    # Create a temporary directory to save uploaded files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_dir_path = Path(tmpdir)
+        file_paths = []
         for file in uploaded_files:
-            file_path = temp_dir / file.name
-            with open(file_path, "wb") as f:
-                f.write(file.read())
-        # Build index
-        with st.spinner("Building index and embedding documents..."):
-            try:
-                build_index_from_directory(str(temp_dir), index_dir=str(temp_dir))
-                st.session_state['engine'] = QueryEngine(index_dir=str(temp_dir))
-                st.session_state['index_built'] = True
-                st.success("Index built successfully!")
-            except Exception as e:
-                st.error(f"Failed to build index: {e}")
-                logger.error(f"Index build error: {e}")
-else:
-    st.info("Please upload at least one PDF to begin.")
+            # Generate hash of file content
+            file_hash = get_file_hash(file.getvalue())
+            
+            # Check if this file has already been processed
+            if 'processed_files' not in st.session_state:
+                st.session_state.processed_files = set()
+            
+            if file_hash not in st.session_state.processed_files:
+                # Save the uploaded file to the temporary directory
+                file_path = tmp_dir_path / file.name
+                with open(file_path, "wb") as f:
+                    f.write(file.getvalue())
+                file_paths.append(str(file_path))
+                st.session_state.processed_files.add(file_hash)
 
-# --- Q&A Interface ---
-if st.session_state.get('index_built') and st.session_state.get('engine'):
-    st.subheader("Ask a Question")
-    user_query = st.text_input("Enter your question about the uploaded documents:")
+        # Add documents to the index
+        if file_paths:
+            with st.spinner("Indexing documents..."):
+                results = st.session_state.query_engine.index.add_documents(file_paths)
+                st.success(f"✅ Indexed {results['processed']} new documents with {results['new_chunks']} chunks.")
+
+def display_chat_message(message: str, is_user: bool = False):
+    """Display a chat message with appropriate styling."""
+    # Use columns to push user message to the right
+    col1, col2 = st.columns([1, 10])
+    if is_user:
+         with col2:
+             st.markdown(f"""
+                 <div class="chat-message user">
+                     <div>{message}</div>
+                 </div>
+             """, unsafe_allow_html=True)
+    else:
+        # Use columns to keep assistant message to the left
+        with col1:
+             st.markdown("**🤖 Assistant:**") # Optional: Add an icon or label
+        with col2:
+            st.markdown(f"""
+                <div class="chat-message assistant">
+                    <div>{message}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+
+def main():
+    # Initialize session state
+    if 'query_engine' not in st.session_state:
+        st.session_state.query_engine = get_query_engine()
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    
+    # Sidebar
+    with st.sidebar:
+        st.title("📚 PaperPilot")
+        st.markdown("---")
+        st.markdown("### About")
+        st.markdown("""
+        PaperPilot helps you:
+        - 📄 Upload and analyze PDF documents
+        - ❓ Ask questions about your documents
+        - 🔍 Find information in documents
+        """)
+        st.markdown("---")
+        st.markdown("### Settings")
+        st.markdown("Using local Ollama model: `gemma2:2b`") # Indicate the model being used
+    
+    # Main content area - Only Document Q&A section
+    st.header("Ask Questions About Your Documents")
+    
+    # File upload in the main content area
+    uploaded_files = st.file_uploader(
+        "Upload PDFs",
+        type=['pdf'],
+        accept_multiple_files=True,
+        help="Upload one or more PDF documents to analyze"
+    )
+    
+    if uploaded_files:
+        process_uploaded_files(uploaded_files)
+    
+    # Chat interface
+    user_query = st.chat_input("Enter your question about the uploaded documents...")
+    
+    # Display chat history
+    for message in st.session_state.chat_history:
+        display_chat_message(message['content'], message['is_user'])
+    
     if user_query:
-        with st.spinner("Processing your question..."):
-            # Show progress steps
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+        # Add user message to chat history
+        st.session_state.chat_history.append({'content': user_query, 'is_user': True})
+        display_chat_message(user_query, True)
+        
+        with st.spinner("Thinking..."):
+            result = st.session_state.query_engine.query(user_query)
             
-            # Step 1: Retrieving context
-            status_text.text("Retrieving relevant context...")
-            progress_bar.progress(25)
+            # Add assistant response to chat history
+            st.session_state.chat_history.append({'content': result['answer'], 'is_user': False})
+            display_chat_message(result['answer'])
             
-            # Step 2: Generating answer
-            status_text.text("Generating answer...")
-            progress_bar.progress(75)
-            
-            result = st.session_state['engine'].query(user_query, top_k=5)
-            
-            # Step 3: Complete
-            progress_bar.progress(100)
-            status_text.text("Done!")
-            
-        st.markdown(f"### 🧠 Answer\n{result['answer']}")
-        with st.expander("Show supporting context and sources"):
-            st.markdown("#### Context")
-            st.code(result['context'])
-            st.markdown("#### Sources")
-            for src in result['sources']:
-                meta = src.get('chunk_metadata', {})
-                st.write(f"- **Type:** {meta.get('chunk_type', 'text')}, **Section:** {meta.get('section_title', '')}, **Doc:** {meta.get('document_title', '')}")
-else:
-    st.info("Build the index to enable Q&A.")
+            # Display sources if available
+            if result['sources']:
+                with st.expander("📚 View Sources", expanded=False):
+                    # First show the context
+                    st.markdown("### Context")
+                    st.markdown(f"<div class='source-box'>{result['context']}</div>", unsafe_allow_html=True)
+                    
+                    # Then show individual sources
+                    st.markdown("### Sources")
+                    for i, source_item in enumerate(result['sources'], 1):
+                        # Get metadata from the source item
+                        source_doc = source_item.get('source', 'Unknown Document')
+                        source_page = source_item.get('page', 'Unknown Page')
+                        chunk_text = source_item.get('chunk_text', 'Content not available')
+                        similarity_score = source_item.get('score', 0)
+                        
+                        # Format similarity score as percentage
+                        score_percentage = f"{similarity_score * 100:.1f}%"
+                        
+                        st.markdown(f"""
+                            <div class="source-box">
+                                <div class="source-header">
+                                    <h3 style="margin: 0;">Source {i}</h3>
+                                    <span class="source-score">Relevance: {score_percentage}</span>
+                                </div>
+                                <div class="source-metadata">
+                                    <span class="source-metadata-item">📄 {source_doc}</span>
+                                    <span class="source-metadata-item">📑 Page {source_page}</span>
+                                </div>
+                                <div class="source-content">
+                                    {chunk_text}
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
 
-# --- Cleanup on exit (optional) ---
-# You may want to clean up temp files/directories when the app closes. 
+if __name__ == "__main__":
+    main() 

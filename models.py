@@ -29,12 +29,12 @@ class EmbeddingModel:
 
 class LanguageModel:
     def __init__(self, 
-                 ollama_model: str = "llama2:7b",
-                 hf_model: str = "microsoft/phi-2", 
+                 ollama_model: str = "gemma2:2b",
+                 hf_model: str = "google/gemma-2-2b", 
                  api_token: Optional[str] = None, 
                  task: str = "text-generation"):
         """
-        Tries to use local Ollama (llama2:7b) for inference. If not available, falls back to Hugging Face pipeline (microsoft/phi-2).
+        Tries to use local Ollama (llama2:7b) for inference. If not available, falls back to Hugging Face pipeline (google/gemma-2-2b).
         """
         self.use_ollama = False
         self.ollama_url = "http://localhost:11434/api/generate"

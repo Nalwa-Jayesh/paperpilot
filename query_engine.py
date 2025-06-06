@@ -15,8 +15,8 @@ class QueryEngine:
     def __init__(self,
                  index_dir: str = "./index",
                  embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-                 ollama_model: str = "llama2:7b",
-                 hf_model: str = "microsoft/phi-2",
+                 ollama_model: str = "gemma2:2b",
+                 hf_model: str = "google/gemma-2-2b",
                  llm_api_token: Optional[str] = None):
         """
         Query engine for RAG pipeline. Loads FAISS index, embeds queries, retrieves context, and calls LLM.
@@ -51,15 +51,41 @@ class QueryEngine:
         # 5. Call LLM
         answer = self.llm.generate(prompt)
         # 6. Return answer and sources
+        # Prepare enriched sources for display
+        enriched_sources = []
+        for result_item in results:
+            chunk_id = result_item.get('chunk_id')
+            chunk_text = 'Content not available' # Default value
+            document_title = result_item.get('document_title', 'Unknown Document') # Default value
+            page_number = 'Unknown Page' # Default value
+            
+            if chunk_id:
+                # Attempt to get chunk text
+                retrieved_text = self.index.get_chunk_text(chunk_id)
+                if retrieved_text is not None:
+                    chunk_text = retrieved_text
+                
+                # Attempt to get metadata
+                metadata = result_item.get('chunk_metadata', {})
+                # Check for document title/path in metadata as fallback
+                if document_title == 'Unknown Document':
+                     document_title = metadata.get('document_title', metadata.get('document_path', 'Unknown Document'))
+
+                # Get page number from metadata
+                page_number = metadata.get('page_number', 'Unknown Page')
+                
+            enriched_sources.append({
+                'chunk_text': chunk_text,
+                'source': document_title,
+                'page': page_number,
+                'score': result_item.get('similarity_score')
+            })
+                
         return {
             "answer": answer,
-            "sources": results,
-            "context": context
+            "sources": enriched_sources, # Return the enriched sources
+            "context": context # Keep context for now, might be useful later or for debugging
         }
-
-    def _get_chunk_text(self, result: Dict[str, Any]) -> str:
-        # This method is no longer needed as we retrieve text in query()
-        pass
 
     def _build_prompt(self, context: str, user_query: str) -> str:
         prompt = (

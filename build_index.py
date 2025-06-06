@@ -136,6 +136,8 @@ class VectorIndexBuilder:
                     self.chunk_texts = json.load(f)
 
                 self.logger.info(f"Loaded existing index with {len(self.chunk_metadata)} chunks and {len(self.chunk_texts)} chunk texts")
+                if not self.chunk_texts:
+                    self.logger.warning("Loaded chunks_text.json is empty or failed to load correctly.")
 
             except Exception as e:
                 self.logger.warning(f"Failed to load existing index: {e}")
@@ -506,7 +508,13 @@ class VectorIndexBuilder:
         """
         Retrieve the full text of a chunk by its ID from storage.
         """
-        return self.chunk_texts.get(chunk_id)
+        self.logger.info(f"Attempting to retrieve chunk text for chunk_id: {chunk_id}")
+        text = self.chunk_texts.get(chunk_id)
+        if text is None:
+            self.logger.warning(f"Chunk text not found for chunk_id: {chunk_id}")
+        else:
+            self.logger.info(f"Successfully retrieved chunk text for chunk_id: {chunk_id} (length: {len(text)})")
+        return text
 
     def _save_index(self):
         """Save the index, metadata, and chunk texts to disk"""
